@@ -2,44 +2,46 @@ import discord
 import requests
 from bs4 import BeautifulSoup
 import asyncio
+import os
 
-TOKEN = "MTM2MDg5Njc3MzcxOTA2NDczOA.GducNS.r9EqTpHKcvS6FZhk9NypRCiKzRZ6SFn7R5OxGI"
-CHANNEL_ID = 1326619567136706570  # ID канала, куда присылать уведомления
+TOKEN = os.getenv("DISCORD_BOT_TOKEN")
+CHANNEL_ID = int(os.getenv("DISCORD_CHANNEL_ID"))
 FORUM_URL = "https://forum.gta5rp.com/forums/meroprijatija-na-servere.549/"
 
 intents = discord.Intents.default()
-client = discord.Client(intents=intents)
 
-latest_topic = None
+class MyClient(discord.Client):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.latest_topic = None
 
-async def check_new_topics():
-    global latest_topic
-    await client.wait_until_ready()
-    channel = client.get_channel(CHANNEL_ID)
+    async def on_ready(self):
+        print(f"Бот запущен как {self.user}")
+        self.bg_task = asyncio.create_task(self.check_new_topics())
 
-    while not client.is_closed():
-        try:
-            response = requests.get(FORUM_URL)
-            soup = BeautifulSoup(response.text, "html.parser")
-            topics = soup.select("div.structItem--thread")  # Темы на странице
+    async def check_new_topics(self):
+        await self.wait_until_ready()
+        channel = self.get_channel(CHANNEL_ID)
 
-            if topics:
-                first_topic = topics[0]
-                link = "https://forum.gta5rp.com" + first_topic.find("a", class_="structItem-title").get("href")
-                title = first_topic.find("a", class_="structItem-title").text.strip()
+        while not self.is_closed():
+            try:
+                response = requests.get(FORUM_URL)
+                soup = BeautifulSoup(response.text, "html.parser")
+                topics = soup.select("div.structItem--thread")
 
-                if latest_topic != link:
-                    latest_topic = link
-                    await channel.send(f"🆕 Новая тема: **{title}**\n{link}")
+                if topics:
+                    first_topic = topics[0]
+                    link = "https://forum.gta5rp.com" + first_topic.find("a", class_="structItem-title").get("href")
+                    title = first_topic.find("a", class_="structItem-title").text.strip()
 
-        except Exception as e:
-            print("Ошибка при парсинге:", e)
+                    if self.latest_topic != link:
+                        self.latest_topic = link
+                        await channel.send(f"🆕 Новая тема: **{title}**\n{link}")
 
-        await asyncio.sleep(30)  # Проверка каждые 30 секунд
+            except Exception as e:
+                print("Ошибка при парсинге:", e)
 
-@client.event
-async def on_ready():
-    print(f"Бот запущен как {client.user}")
+            await asyncio.sleep(30)  # Проверка каждые 30 секунд
 
-client.loop.create_task(check_new_topics())
+client = MyClient(intents=intents)
 client.run(TOKEN)
